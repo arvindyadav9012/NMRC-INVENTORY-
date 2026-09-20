@@ -1,0 +1,37 @@
+name: Build NMRC INVENTORY
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+      - name: Deep Extract and Find
+        run: |
+          ZIP=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
+          echo "Main ZIP: $ZIP"
+          unzip -o "$ZIP"
+          echo "--- First level files ---"
+          ls -R | head -n 200
+          echo "--- Finding nested ZIPs ---"
+          find . -name "*.zip" -type f
+          for z in $(find . -name "*.zip" -type f | grep -v "^./$ZIP"); do echo "Unzipping nested $z"; unzip -o -q "$z" || true; done
+          echo "--- Final Search ---"
+          find . -type f -name "gradlew" -o -name "build.gradle*" | head -20
+          FILE=$(find . -type f -name "gradlew" | head -n 1)
+          if [ -z "$FILE" ]; then echo "Still no gradlew"; echo "GRADLE_DIR=." >> $GITHUB_ENV; else echo "Found $FILE"; echo "GRADLE_DIR=$(dirname $FILE)" >> $GITHUB_ENV; fi
+      - name: Build
+        run: |
+          echo "Using ${{ env.GRADLE_DIR }}"
+          ls -lh "${{ env.GRADLE_DIR }}"
+          cd "${{ env.GRADLE_DIR }}"
+          if [ ! -f "gradlew" ]; then echo "ERROR: gradlew missing, structure is:"; find . -maxdepth 3 -type f | head -100; exit 1; fi
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NMRC-INVENTORY-APK
+          path: '**/build/outputs/apk/debug/*.apk'
