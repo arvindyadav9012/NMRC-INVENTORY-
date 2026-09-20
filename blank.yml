@@ -1,4 +1,4 @@
-hername: NMRC BUILD
+name: NMRC BUILD
 on: [push]
 jobs:
   build:
