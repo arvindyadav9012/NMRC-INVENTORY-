@@ -1,1 +1,44 @@
+hername: NMRC BUILD
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
+      - name: Fix Name and Logo
+        run: |
+          ls -la
+          echo "Unzipping all zips..."
+          for z in *.zip *.ZIP; do [ -f "$z" ] && unzip -o "$z" && rm "$z"; done
+          ls -la
+          PROJECT_DIR=$(find. -name "gradlew" -type f -exec dirname {} \; | head -n 1)
+          echo "PROJECT_DIR=$PROJECT_DIR"
+          if [ -z "$PROJECT_DIR" ]; then
+            PROJECT_DIR=$(find. -maxdepth 3 -type d -name "app" | head -n 1 | xargs dirname)
+          fi
+          echo "Final PROJECT_DIR=$PROJECT_DIR"
+          cd "$PROJECT_DIR"
+          if [ -f "../../logo.png" ]; then
+            find. -path "*mipmap*ic_launcher.png" -exec cp../../logo.png {} \; || true
+            find. -path "*mipmap*ic_launcher_round.png" -exec cp../../logo.png {} \; || true
+            rm -f app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+            rm -f app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+          fi
+          sed -i 's/android:label="[^"]*"/android:label="NMRC INVENTORY"/' app/src/main/AndroidManifest.xml || true
+
+      - name: Build APK
+        run: |
+          PROJECT_DIR=$(find. -name "gradlew" -type f -exec dirname {} \; | head -n 1)
+          cd "$PROJECT_DIR"
+          chmod +x gradlew
+         ./gradlew assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NMRC-FINAL-APK
+          path: '**/build/outputs/apk/debug/*.apk'
