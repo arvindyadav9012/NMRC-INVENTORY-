@@ -10,16 +10,35 @@ jobs:
           java-version: 17
           distribution: temurin
       - run: |
-          ZIP=$(ls *.zip | head -1)
+          ZIP=$(ls *.zip Aurion* | head -1)
+          echo "Found ZIP: $ZIP"
           rm -rf src && mkdir src && unzip -q "$ZIP" -d src
           DIR=$(find src -name "gradlew" | head -1 | xargs dirname)
           echo "GRADLE_DIR=$DIR" >> $GITHUB_ENV
           chmod +x $DIR/gradlew
+          # NAME
           find $DIR -name "strings.xml" -exec sed -i 's/.*app_name.*/ <string name="app_name">NMRC INVENTORY<\/string>/g' {} \;
           find $DIR -name "AndroidManifest.xml" -exec sed -i 's/android:label="[^"]*"/android:label="NMRC INVENTORY"/g' {} \;
-          [ -f logo.png ] && find $DIR -type d -name "mipmap-*" -exec cp logo.png {}/ic_launcher.png \; -exec cp logo.png {}/ic_launcher_round.png \; || echo "logo.png missing"
+          # LOGO FIX - FINAL
+          find $DIR -name "ic_launcher*.xml" -delete
+          rm -rf $DIR/app/src/main/res/mipmap-anydpi-v26
+          pip install pillow -q
+          python3 -c "
+          from PIL import Image
+          import glob, os
+          im=Image.open('logo.png').convert('RGBA')
+          for f in glob.glob('$DIR/**/mipmap-*', recursive=True):
+              bg=Image.new('RGBA',(512,512),(255,255,255,255))
+              th=im.resize((480,480), Image.LANCZOS)
+              bg.paste(th,(16,16),th)
+              for s in [48,72,96,144,192]:
+                  ic=bg.resize((s,s), Image.LANCZOS)
+                  ic.save(os.path.join(f,'ic_launcher.png'))
+                  ic.save(os.path.join(f,'ic_launcher_round.png'))
+          print('NMRC logo applied')
+          "
       - run: cd ${{ env.GRADLE_DIR }} &&./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: NMRC-INVENTORY-APK
+          name: NMRC-FINAL-APK
           path: '**/build/outputs/apk/debug/*.apk'
