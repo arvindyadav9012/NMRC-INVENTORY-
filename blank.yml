@@ -1,40 +1,49 @@
-name: NMRC BUILD
-on: [push]
+name: Build NMRC INVENTORY APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
-      - name: Unzip and Build
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Install Android SDK
         run: |
-          ls -la
-          unzip -o "NMRC_INVENTORY_ANDROID_BUILD_FIX_V2.zip"
-          ls -la
-          GRADLEW=$(find. -name gradlew -type f | head -n 1)
-          echo "Found: $GRADLEW"
-          PROJECT_DIR=$(dirname "$GRADLEW")
-          echo "Building in $PROJECT_DIR"
-          cd "$PROJECT_DIR"
-          # Logo replace - white bg pink text wala
-          if [ -f "../../logo.png" ]; then
-            echo "Replacing logos..."
-            find. -name "ic_launcher.png" -exec cp "../../logo.png" {} \;
-            find. -name "ic_launcher_round.png" -exec cp "../../logo.png" {} \;
-            rm -f app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
-            rm -f app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
-          fi
-          sed -i 's/android:label="[^"]*"/android:label="NMRC INVENTORY"/' app/src/main/AndroidManifest.xml || true
-          chmod +x gradlew
-         ./gradlew assembleDebug
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
+
+      - name: Check Gradle Wrapper
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --version
+
+      - name: Build NMRC INVENTORY APK
+        run: ./gradlew --no-daemon clean assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NMRC-FINAL-APK
-          path: '**/build/outputs/apk/debug/*.apk'
+          name: NMRC-INVENTORY-APK
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
