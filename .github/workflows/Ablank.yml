@@ -1,5 +1,5 @@
-name: Build NMRC INVENTORY
-on: [push, workflow_dispatch]
+name: NMRC
+on: [push]
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -9,102 +9,32 @@ jobs:
         with:
           java-version: 17
           distribution: temurin
-          
-      - name: Build WebView APK
-        run: |
-          # 1. Find and extract your website zip
-          ZIP=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
-          echo "Using $ZIP"
-          rm -rf app_build
-          mkdir -p app_build
-          unzip -o "$ZIP" -d app_build/www
-          ls app_build/www
-          
-          # 2. Create Android project structure
-          mkdir -p app_build/app/src/main/java/com/nmrc/inventory
-          mkdir -p app_build/app/src/main/res/values
-          mkdir -p app_build/app/src/main/res/mipmap-xxxhdpi
-          mkdir -p app_build/app/src/main/assets
-          mkdir -p app_build/gradle/wrapper
-          
-          # Copy website to assets
-          cp -r app_build/www/* app_build/app/src/main/assets/ 2>/dev/null || cp -r app_build/www/*/* app_build/app/src/main/assets/ || true
-          
-          # 3. Create logo (blue NMRC)
-          cat > /tmp/gen_logo.py << 'PY'
-          from PIL import Image, ImageDraw, ImageFont
-          img = Image.new('RGBA', (512,512), (13,71,161,255))
-          d = ImageDraw.Draw(img)
-          d.rectangle([15,15,497,497], outline=(255,255,255,255), width=10)
-          try:
-              d.text((256,210), "NMRC", fill="white", anchor="mm", font=ImageFont.truetype("DejaVuSans-Bold.ttf", 120))
-              d.text((256,340), "INVENTORY", fill="white", anchor="mm", font=ImageFont.truetype("DejaVuSans-Bold.ttf", 42))
-          except:
-              d.text((170,200), "NMRC", fill="white")
-              d.text((110,300), "INVENTORY", fill="white")
-          img.save("app_build/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png")
-          img.save("app_build/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png")
-          PY
+      - run: |
+          ZIP=$(ls *.zip | head -1)
+          rm -rf src && mkdir src && unzip -q "$ZIP" -d src
+          DIR=$(find src -name "gradlew" | head -1 | xargs dirname)
+          echo "GRADLE_DIR=$DIR" >> $GITHUB_ENV
+          chmod +x $DIR/gradlew
+          find $DIR -name "strings.xml" -exec sed -i 's#<string name="app_name">.*</string>#<string name="app_name">NMRC INVENTORY</string>#g' {} \;
+          find $DIR -name "ic_launcher*.xml" -delete
+          rm -rf $DIR/app/src/main/res/mipmap-anydpi-v26
+          find $DIR -name "ic_launcher*.png" -delete
           pip install pillow -q
-          python /tmp/gen_logo.py
-          
-          # 4. Create config files
-          echo '<resources><string name="app_name">NMRC INVENTORY</string></resources>' > app_build/app/src/main/res/values/strings.xml
-          
-          cat > app_build/app/src/main/AndroidManifest.xml << 'MAN'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-              <uses-permission android:name="android.permission.CAMERA" />
-              <uses-permission android:name="android.permission.INTERNET" />
-              <application android:allowBackup="true" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:label="@string/app_name" android:theme="@android:style/Theme.Material.Light.DarkActionBar">
-                  <activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter></activity>
-              </application>
-          </manifest>
-          MAN
-          
-          cat > app_build/app/src/main/java/com/nmrc/inventory/MainActivity.java << 'JAVA'
-          package com.nmrc.inventory;
-          import android.os.Bundle;
-          import android.webkit.*;
-          import androidx.appcompat.app.AppCompatActivity;
-          public class MainActivity extends AppCompatActivity {
-              @Override
-              protected void onCreate(Bundle savedInstanceState) {
-                  super.onCreate(savedInstanceState);
-                  WebView wv = new WebView(this);
-                  wv.getSettings().setJavaScriptEnabled(true);
-                  wv.getSettings().setDomStorageEnabled(true);
-                  wv.getSettings().setAllowFileAccess(true);
-                  wv.setWebViewClient(new WebViewClient());
-                  wv.setWebChromeClient(new WebChromeClient());
-                  wv.loadUrl("file:///android_asset/index.html");
-                  setContentView(wv);
-              }
-          }
-          JAVA
-          
-          cat > app_build/build.gradle << 'GR'
-          buildscript { repositories { google(); mavenCentral() } dependencies { classpath 'com.android.tools.build:gradle:8.2.2' } }
-          allprojects { repositories { google(); mavenCentral() } }
-          GR
-          echo "include ':app'" > app_build/settings.gradle
-          cat > app_build/app/build.gradle << 'GR'
-          plugins { id 'com.android.application' }
-          android { namespace 'com.nmrc.inventory'; compileSdk 34; defaultConfig { applicationId "com.nmrc.inventory"; minSdk 24; targetSdk 34; versionCode 1; versionName "1.0" } }
-          dependencies { implementation 'androidx.appcompat:appcompat:1.6.1' }
-          GR
-          echo "distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\\://services.gradle.org/distributions/gradle-8.6-bin.zip
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists" > app_build/gradle/wrapper/gradle-wrapper.properties
-          
-          cd app_build
-          gradle assembleDebug --no-daemon
-          
+          python3 -c "
+          from PIL import Image
+          import glob, os
+          im=Image.open('logo.png').convert('RGBA')
+          for d in glob.glob('src/**/mipmap-*', recursive=True):
+            if not os.path.isdir(d): continue
+            for s in [48,72,96,144,192]:
+              c=Image.new('RGBA',(s,s),(255,255,255,255))
+              l=im.resize((int(s*0.9),int(s*0.9)), Image.LANCZOS)
+              c.paste(l,((s-l.width)//2,(s-l.height)//2),l)
+              c.convert('RGB').save(os.path.join(d,'ic_launcher.png'))
+              c.convert('RGB').save(os.path.join(d,'ic_launcher_round.png'))
+          "
+      - run: cd ${{ env.GRADLE_DIR }} &&./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: NMRC-INVENTORY-APK
-          path: 'app_build/**/build/outputs/apk/debug/*.apk'
+          name: NMRC-APK
+          path: '**/build/outputs/apk/debug/*.apk'
